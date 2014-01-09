@@ -1,0 +1,21 @@
+# Example deps.txt file
+# Comments are ignored
+#
+# The deps.txt file is expected to have lines like so:
+#
+# github.com/robfig/revel v0.8
+#
+# where the first element is the import path and the second is a tag
+# in the project.
+# You can use a branch name, tag or revision no.
+
+# Git
+github.com/robfig/revel              v0.8
+github.com/lib/pq                    master
+
+# Hg
+code.google.com/p/go.crypto/bcrypt   default
+code.google.com/p/go.crypto/blowfish default
+
+# Bzr
+labix.org/v2/mgo  253
