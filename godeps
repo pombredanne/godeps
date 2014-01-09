@@ -1,0 +1,120 @@
+#!/bin/sh
+
+dir="${PWD##*/}"
+depfile="${1:-deps.txt}"
+
+third_party_path="$PWD/third_party"
+
+# Check if we are already in the third_party dir
+if [ "$dir" = "third_party" ]; then
+  # If so trim off the end
+  third_party_path="${third_party_path%/third_party}"
+fi
+
+# Check directory exists
+[ ! -d "$third_party_path" ] && mkdir -p "$third_party_path"
+
+if echo "$depfile" | grep '^/' &> /dev/null; then
+  # Absolute path; abort if not found
+  if [ ! -e "$depfile" ]; then
+    echo ">> [godeps] depfile not found: $depfile"
+    exit 1
+  fi
+else
+  # Relative path; look for depfile in parent directories
+  where="$(/bin/pwd)"
+  while [ -n "$where" ]; do
+    if [ -e "${where}/${depfile}" ]; then
+      depfile="${where}/${depfile}"
+      break
+    fi
+    where="${where%/*}"
+  done
+
+  if [ ! -e "$depfile" ]; then
+    echo ">> [godeps] no suitable depfile found"
+    exit 1
+  fi
+fi
+
+# Trim comments from lines in Depfile; ignore empty lines
+sed 's/#.*//;/^\s*$/d' "$depfile" \
+  | while read package sha; do
+  if [ -z "$package" -o -z "$sha" ]; then
+    continue
+  fi
+
+  # First, see if we're already at this SHA/branch/tag; if so, don't
+  # do a bunch of potentially messy things.
+  if [ ! -e "${GOPATH%%:*}/src/${package%%/...}" ]; then
+    echo ">> [godeps] getting package "$package""
+    go get -u -d "$package"
+  fi
+
+  cd "${GOPATH%%:*}/src/${package%%/...}"
+
+  # Check out the specified version. But, try to avoid detached HEAD, which
+  # is annoying; if any branch's HEAD is the specified SHA, then check out the
+  # branch instead.
+
+  hg_root="$(hg root 2> /dev/null)" # sometimes hg package is not at root
+
+  if [ -d ".git" ]; then
+    if [ -d "$third_party_path/$package" ]; then
+      if [ "$(git rev-parse HEAD)" = "${sha}" -o "$(git rev-parse --abbrev-ref HEAD)" = "${sha}" ]; then
+        continue
+      fi
+    fi
+
+    echo ">> [godeps] setting $package to version $sha (git)"
+
+    if ! git checkout -q "$sha"; then
+      git fetch -q
+      git checkout -q "$sha"
+    fi
+  elif [ -d "$hg_root/.hg" ]; then
+    if [ -d "$third_party_path/$package" ]; then
+      if [ "$(hg id -i)" = "${sha}" -o "$(hg id -b)" = "${sha}" ]; then
+        continue
+      fi
+    fi
+
+    echo ">> [godeps] setting $package to version $sha (hg)"
+    if ! hg checkout -q "$sha"; then
+      hg fetch -q
+      hg up -q "$sha"
+    fi
+  elif [ -d ".bzr" ]; then
+    if [ -d "$third_party_path/$package" ]; then
+      if [ "$(bzr revno)" = "${sha}" ]; then
+        continue
+      fi
+    fi
+
+    echo ">> [godeps] setting $package to version $sha (bzr)"
+    if ! bzr up -q -r "$sha"; then
+      bzr pull -q --overwrite
+      bzr up -q -r "$sha"
+    fi
+  else
+    echo ">> [godeps] unsupported vcs (must be hg or git)"
+    continue
+  fi
+
+  cd "$third_party_path"
+  goven -rewrite=true -copy=true "$package" 2> /dev/null
+
+  # Rewrite package imports
+  import_path_base="${third_party_path/$GOPATH\/src\//}"
+  import_path="$import_path_base/$package"
+
+  echo ">> [godeps] rewriting '$package' imports to point to '$import_path'"
+  echo ""
+
+  # Move back to parent directory
+  cd "$(dirname "$third_party_path")"
+  find . -type f -name '*.go' -exec perl -pi -e 's!"'$package'!"'$import_path'!' {} \;
+done
+
+echo ""
+echo ">> [godeps] completed successfully!"
