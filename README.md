@@ -6,6 +6,8 @@ Some code borrowed from johnny_deps.
 A simple shell script that installs the version of your go dependency packages stored in a `deps.txt` file and uses [Goven](https://github.com/kr/goven) to transfer them to a third party folder in your project named `third_party`.
 It then renames your import paths in your go files for you (for only packages in deps.txt).
 
+[![baby-gopher](https://raw2.github.com/drnic/babygopher-site/gh-pages/images/babygopher-badge.png)](http://www.babygopher.org)
+
 
 ### Usage
 
